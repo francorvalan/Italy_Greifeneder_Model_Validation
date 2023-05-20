@@ -3,3 +3,4 @@
 .RData
 .Ruserdata
 02_Data/02_Processed_data/Ground_truth_data.csv
+02_Data/05_Raster_predictions
