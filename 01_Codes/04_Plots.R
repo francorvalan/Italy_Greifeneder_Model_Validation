@@ -1,16 +1,18 @@
 ###
 library(ggdist)
 library(ggplot2)
+library(readr)
+library(tidyquant)
 all_GTD <- read.csv("./02_Data/02_Processed_data/Ground_truth_data.csv")
 str(all_GTD)
-all_GTD$time <- as.POSIXct(all_GTD$time,tz="Europe/Berlin") # Setting Europe tz
+all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
 all_GTD$wc_05_av <- rowMeans(all_GTD[,c("swc_wc_a_05_avg","swc_wc_b_05_avg","swc_wc_c_05_avg")])
 all_GTD$wc_02_av <- rowMeans(all_GTD[,c("swc_wc_a_02_avg","swc_wc_b_02_avg","swc_wc_c_02_avg")])
 df_joined <- read_csv("./02_Data/02_Processed_data/SMC_GTD_Pred.csv")
 
-library(tidyquant)
-all_GTD$station <- as.factor(all_GTD$station)
-all_GTD %>% group_by(station) %>% summarise(median=median(wc_02_av,na.rm = T))
+
+all_GTD$Station <- as.factor(all_GTD$Station)
+all_GTD %>% group_by(Station) %>% summarise(median=median(wc_02_av,na.rm = T))
 ########               DATA DISTRIBUTION
 ## SMC data distribution at 2 cm depth
 all_GTD %>% 
@@ -39,6 +41,68 @@ all_GTD %>%
   labs(title="Soil moisture content data at 5 cm",x="SMC m³/m³",y="Stations")+
   scale_fill_tq()+theme_tq()+
   coord_flip()
+
+####### SMC GTD and Predictions over Time ################
+
+
+Temporal_plot_function <- function(Gound_thouth = data.frame(),
+                                   Estimations = data.frame(),
+                                   depths = character(),
+                                   stations_names = character()) {
+  # This function create a plot adding the SMC Ground Data at one 
+  # specific depth and adding all the possible predictions with diff 
+  # footprints
+  GTD <- Gound_thouth[Gound_thouth$Station == stations_names, ]
+  pred <- Estimations[Estimations$Station_pred == stations_names, ]
+  depth_cm<- gsub("\\D","",depths)
+  ggplot(data = GTD, aes(Date, !!as.name(depths), colour = "depths")) +
+    geom_point(size = 0.3) +
+    geom_point(data = pred, aes(Date_obs, Pred_50m, colour = "Pred_50m"), size = 0.8) +
+    geom_point(data = pred, aes(Date_obs, Pred_100m, colour = "Pred_100m"), size = 0.8) +
+    geom_point(data = pred, aes(Date_obs, Pred_200m, colour = "Pred_200m"), size = 0.8) +
+    geom_point(data = pred, aes(Date_obs, Pred_500m, colour = "Pred_500m"), size = 0.8) +
+    scale_color_manual(name = "Data",
+                       values = c("depths" = 'royalblue4',
+                                  "Pred_50m" = 'orangered',
+                                  "Pred_100m" = 'seagreen2',
+                                  "Pred_200m" = 'purple1',
+                                  "Pred_500m" = 'gold1'),
+                       labels = c(paste0("SMC at ",depth_cm," cm"),
+                                  "Predicted 50m",
+                                  "Predicted 100m",
+                                  "Predicted 200m",
+                                  "Predicted 500m")) +
+    ylab("SMC m3.m-3") +
+    xlab("Date") +
+    ggtitle(paste0("Soil moisture at ",depth_cm," cm, Station ",stations_names))
+}
+
+# Depths in the GTD to plot
+depths <- c("wc_05_av", "wc_02_av")
+# Stations
+stations_names <- c("B2", "I1", "I3", "P1", "P2", "P3")
+# All possible combinations between Stations and depths
+combinations <- expand.grid(depths = depths, stations_names = stations_names)
+
+temporal_dir_output_plot <- "./04_Plots/Temporal_plots/"
+if(!dir.exists(temporal_dir_output_plot))(dir.create(temporal_dir_output_plot))
+
+for (i in 1:nrow(combinations)) {
+  depth <- as.character(combinations$depths[i][1])
+  station <- as.character(combinations$stations_names[i])
+  
+  jpeg(paste0(temporal_dir_output_plot,"Station_",station,"_",depth,"_cm.jpg"), 
+       width = 1300, height = 500,quality=100,res=150)
+  print(Temporal_plot_function(Gound_thouth = all_GTD,
+                               Estimations = df_joined,
+                               depths = depth,
+                               stations_names = station))
+  dev.off()
+}
+
+
+
+
 
 #############       SCATTERPLOTS     ################
 
@@ -179,7 +243,4 @@ tm_shape(read_osm(bbox_stations, ext=1.5,type = basemap)) + tm_rgb(alpha =0.8)+
             legend.bg.alpha = 1,legend.frame = "gray50", 
             main.title = "Soil Moisture Stations",main.title.size=1,
             main.title.position=c("center"))
-
-
-
 
