@@ -59,14 +59,21 @@ local<- locale(
   time_format = "%AT",
   decimal_mark = ".",
   grouping_mark = ",",
-  tz ="Europe/Berlin",
+  tz ="Europe/Rome",
   encoding = "UTF-8",
   asciify = FALSE
 )
 
 # Reading and joining all csv files, removing the fist row (slice(-1))
-all_GTD <- map_dfr(SMC_files, ~ read_csv(.x,locale = local) %>% slice(-1))
+all_GTD <- map_dfr(SMC_files, ~ read_csv(.x,locale = local,na = c("", "NA","NaN")) %>% slice(-1))
+# Write an open in order to read without problem in character & number (double)
+write.csv(all_GTD,"./02_Data/02_Processed_data/Ground_truth_data.csv",row.names = F) 
+all_GTD <- read_csv("./02_Data/02_Processed_data/Ground_truth_data.csv",
+                    locale = local,na = c("", "NA","NaN"))
 
+all_GTD
+summary(all_GTD)
+as_tibble(all_GTD)
 
 # Finding duplicated rows
 (n_duplicated <- nrow(all_GTD[duplicated(all_GTD),])) # 576 data duplicated
@@ -99,13 +106,15 @@ all_GTD[, columns_with_SMC] <- apply(all_GTD[, columns_with_SMC], 2, function(x)
   x[x > 100] <- NA
   return(x)
 })
-
+summary(all_GTD)
 # Rounding in 
 # all_GTD <- data.frame(lapply(all_GTD,    # Using Base R functions
 #                   function(x) if(is.numeric(x)) round(x, 5) else x))
 names(all_GTD)[grep("station",names(all_GTD))] <- "Station"
 names(all_GTD)[grep("time",names(all_GTD))] <- "Date"
 all_GTD$Station <- toupper(all_GTD$Station)
+all_GTD$wc_05_av <- rowMeans(all_GTD[,c("swc_wc_a_05_avg","swc_wc_b_05_avg","swc_wc_c_05_avg")])
+all_GTD$wc_02_av <- rowMeans(all_GTD[,c("swc_wc_a_02_avg","swc_wc_b_02_avg","swc_wc_c_02_avg")])
 
 write.csv(all_GTD,"./02_Data/02_Processed_data/Ground_truth_data.csv",row.names = F) 
 
@@ -113,8 +122,6 @@ all_GTD <- read.csv("./02_Data/02_Processed_data/Ground_truth_data.csv")
 
 all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
 #all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Berlin") # Setting Europe tz
-all_GTD$wc_05_av <- rowMeans(all_GTD[,c("swc_wc_a_05_avg","swc_wc_b_05_avg","swc_wc_c_05_avg")])
-all_GTD$wc_02_av <- rowMeans(all_GTD[,c("swc_wc_a_02_avg","swc_wc_b_02_avg","swc_wc_c_02_avg")])
 
 
 ####################     02 SMC Estimations processing    ######################
