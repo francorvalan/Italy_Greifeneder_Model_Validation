@@ -3,6 +3,9 @@ library(ggdist)
 library(ggplot2)
 library(readr)
 library(tidyquant)
+library(reshape2)
+library(ggpubr)
+
 all_GTD <- read.csv("./02_Data/02_Processed_data/Ground_truth_data.csv")
 str(all_GTD)
 all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
@@ -105,12 +108,62 @@ for (i in 1:nrow(combinations)) {
 
 
 #############       SCATTERPLOTS     ################
+cols_melt_footprint<- names(df_joined)[!names(df_joined)%in%c("Pred_100m","Pred_200m","Pred_500m","Pred_50m")]
+pred_obs_data_melt_footprint <- reshape2::melt(df_joined,id = cols_melt_footprint) 
+pred_obs_data_melt_footprint$Footprint <- as.numeric(gsub("\\D","",pred_obs_data_melt_footprint$variable))
+pred_obs_data_melt_footprint <- pred_obs_data_melt_footprint %>% arrange(Footprint)
+pred_obs_data_melt_footprint_P3 <- pred_obs_data_melt_footprint %>% filter(Station_pred=="P3")
+ggscatter(pred_obs_data_melt_footprint, x = "obs_02", 
+          y = "value", 
+          col='royalblue4',size=0.2,# points
+          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+          add.params = list(color = "royalblue4",size=0.1),
+          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+          #cor.coef = TRUE, 
+          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+          facet.by = 'Footprint',panel.labs=list("Footprint"=c("50 m","100 m",
+                                                 "200 m","500 m")))+
+  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
+           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 3) +
+  labs(y='SMC Predicted', x='SMC Observed 2 cm',size=3)+
+  geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
+
+ggscatter(pred_obs_data_melt_footprint, x = "obs_05", 
+          y = "value", 
+          col='royalblue4',size=0.2,# points
+          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+          add.params = list(color = "royalblue4",size=0.1),
+          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+          #cor.coef = TRUE, 
+          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+          facet.by = 'Footprint',panel.labs=list("Footprint"=c("50 m","100 m",
+                                                               "200 m","500 m")))+
+  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
+           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 3) +
+  labs(y='SMC Predicted', x='SMC Observed 5 cm',size=3)+
+  geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
+
+ggscatter(pred_obs_data_melt_footprint_P3, x = "obs_02", 
+          y = "value", 
+          col='royalblue4',size=0.2,# points
+          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+          add.params = list(color = "royalblue4",size=0.1),
+          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+          #cor.coef = TRUE, 
+          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+          facet.by = 'Footprint',panel.labs=list("Footprint"=c("50 m","100 m",
+                                                               "200 m","500 m")))+
+  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
+           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 3) +
+  labs(y='SMC Predicted', x='SMC Observed 5 cm',size=3)+
+  geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
+
 
 ggplot(data=df_joined, aes(x=obs_02, fill=Station_pred)) +
   geom_density(alpha=0.5) +
   theme_minimal()
 
-library(ggpubr)
+
 ggscatter(df_joined, x = "obs_02", size = 0.3,
           y = "Pred_50m",# points
           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
@@ -149,9 +202,9 @@ p <- p + theme_bw()
 # print plot
 print(p)
 
-df_joined$SM_pred <- df_joined$SM_pred /100
+
 ggscatter(df_joined, x = "obs_02", 
-          y = "SM_pred", 
+          y = "Pred_50m", 
           col='royalblue4',size=0.2,# points
           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
           add.params = list(color = "royalblue4",size=0.1),
@@ -164,8 +217,9 @@ ggscatter(df_joined, x = "obs_02",
   labs(y='SMC Predicted', x='SMC Observed',size=3)+
   geom_abline(intercept=0, slope=1,col='red',lty=3)
 
-ggscatter(df_joined, x = "obs_05", 
-          y = "Pred_50m", 
+
+ggscatter(df_joined %>% filter(complete.cases(Pred_200m)), x = "obs_05", 
+          y = "Pred_200m", 
           col='royalblue4',size=0.2,# points
           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
           add.params = list(color = "royalblue4",size=0.1),
@@ -178,6 +232,7 @@ ggscatter(df_joined, x = "obs_05",
   labs(y='SMC Predicted', x='SMC Observed',size=3)+
   geom_abline(intercept=0, slope=1,col='red',lty=3) 
 df_joined<- df_joined[df_joined$obs_02<0.5,]
+
 
 ggscatter(df_joined, x = "obs_05", 
           y = "SM_pred", 

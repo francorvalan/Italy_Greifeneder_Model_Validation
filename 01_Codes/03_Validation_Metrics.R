@@ -3,17 +3,20 @@ library(readr)
 library(rlang)
 library(dplyr)
 pred_obs_data <- read_csv("./02_Data/02_Processed_data/SMC_GTD_Pred.csv")
-
 Accuracy_Metrics <- function(dataframe, obs = "obs", pred = "pred", group = NULL) {
   # This function computes several validation metrics:
   #     - AVE, RMSE, MSE, MAE, R2, Spearman, Pearson
   # It allows to group the data in order to compute this mettrics by group.
   require(caret)
   require(Metrics)
+  Depth <- quo_name(enquo(obs))
   dataframe %>%
     filter(complete.cases(!!ensym(obs), !!ensym(pred))) %>%
     group_by(({{group}}))%>%
       summarise(
+              Depth=Depth,
+              #Group={{group}},
+              Footprint={{pred}},
               n=n(),
               RMSE = caret::RMSE(!!ensym(obs), !!ensym(pred)),
               MAE = Metrics::mae(!!ensym(obs), !!ensym(pred)),
@@ -27,9 +30,11 @@ Accuracy_Metrics <- function(dataframe, obs = "obs", pred = "pred", group = NULL
     ungroup()
 }
 
+######### STATION AND LAND-COVER VALIDATION IN ALL POSIBLE COMBINATIONS VALIDATION 
 # Create list to make all possible validation combination
 # Posibles footprints predictions
-pred_list <- as.list(sort(noquote(grep("Pred",names(pred_obs_data),value = T))))[order(as.numeric(gsub("\\D", "", pred_list)))]
+pred_list <- as.list(sort(noquote(grep("Pred",names(pred_obs_data),value = T))))
+pred_list <-pred_list[order(as.numeric(gsub("\\D", "", pred_list)))]
 pred_list <- lapply(pred_list, function(x) noquote (x))
 # Observations depth
 obs_list <- list(quote(obs_02), quote(obs_05))
@@ -64,18 +69,32 @@ for(obs in seq_along(obs_list)){
   }
 }
 
-group_list<- list(NULL)
+
 
 # ACCURACY IN STATIONS WITHOUT GROUPING
 # output_list[[1]][[2]][[3]] would give you the output of
 # first "obs" value (obs_02) and the second "group" value (Land_use).
-output_list <- lapply(obs_list, function(obs_value) {
+group_list<- list(NULL)
+
+Overall_Accuracy <- lapply(obs_list, function(obs_value) {
   lapply(pred_list,function(pred_value){
     lapply(group_list, function(group_value) {
       Accuracy_Metrics(pred_obs_data, obs = !!obs_value, pred = !!pred_value, group = !!group_value)
     })
   })
 })
+Overall_Accuracy <- lapply(Overall_Accuracy, unlist,recursive=F)
+join_df <- function(x){
+  do.call(rbind,x)
+}
+
+Overall_Accuracy <-lapply(Overall_Accuracy, join_df)
+write_files <- function(x){
+  write.csv2(x,file = paste0("./03_Results/Accuracy/Overall_accuracy_",c(unique(x[,c("Depth")])),".csv"))
+}
+lapply(Overall_Accuracy,write_files)
+
+
 # Write data frames to CSV files
 output_dir <- "./03_Results/Accuracy/Sin_agrupar/"  # Specify the directory where the files will be saved
 if(!dir.exists(output_dir)) dir.create(output_dir)
@@ -87,6 +106,38 @@ for(obs in seq_along(obs_list)){
       write.csv2(output_list[[obs]][[p]][[landc]], file = filepath, row.names = FALSE)
     }
   }
+}
+
+#### LAND-COVER OVERALL ACCURACY
+group_list<- list(quote(Land_use))
+
+Overall_Accuracy_Land_cover <- lapply(obs_list, function(obs_value) {
+  lapply(pred_list,function(pred_value){
+    lapply(group_list, function(group_value) {
+      Accuracy_Metrics(pred_obs_data, obs = !!obs_value, pred = !!pred_value, group = !!group_value)
+    })
+  })
+})
+
+bind_df <- function(x){
+  do.call(rbind,x)
+}
+
+
+
+
+Overall_Accuracy_Land_cover<- lapply(lapply(Overall_Accuracy_Land_cover,unlist,recursive=F), bind_df)
+# 
+Overall_Accuracy_Land_cover <- lapply(Overall_Accuracy_Land_cover, function(x){
+  x %>% arrange(`(Land_use)`) %>% arrange(Depth) %>% mutate(across(where(is.numeric), round, 3))
+})
+# Write data frames to CSV files
+output_dir <- "./03_Results/Accuracy/Overall_Land_cover/"  # Specify the directory where the files will be saved
+if(!dir.exists(output_dir)) dir.create(output_dir)
+for(obs in seq_along(obs_list)){
+      filename <- paste0("Overall_Land_cover_accuracy_","depth_", gsub("\\D","",obs_list[[obs]]),"_cm", ".csv")
+      filepath <- file.path(output_dir, filename)
+      write.csv2(Overall_Accuracy_Land_cover[[obs]], file = filepath, row.names = FALSE)
 }
 
 
@@ -163,9 +214,6 @@ output_list_unlisted <- lapply(output_list, unlist,recursive=F)
 
 # Print the combined dataframe
 print(combined_df)
-join_df<- function(x){
-  do.call(rbind,x)
-}
 
 write_files <- function(x){
   write.csv2(x,file = paste0("./03_Results/Accuracy/",unique(x[,c("Station_N")]),".csv"))

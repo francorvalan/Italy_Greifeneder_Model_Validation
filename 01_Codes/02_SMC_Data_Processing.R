@@ -88,8 +88,9 @@ SMC_files %>%
   lapply(function(x) unique(x$station)) # the 4 file has 6 stations,...
 
 # Searching if the duplicated data are between the 4 file and the all_GTD
-df_4 <- read_csv(SMC_files[[4]],locale = local)%>% slice(-1) # reading file 4
-nrow(intersect(all_GTD, df_4)) # 576, there are also one duplicated data,
+# df_4 <- read_csv(SMC_files[[4]],locale = local,delim=",")%>% slice(-1) # reading file 4
+
+# nrow(intersect(all_GTD, df_4)) # 576, there are also one duplicated data,
 # now we can know that all data from SMC_files[[4]] are already in other csv files
 
 # removing the duplicated data
@@ -125,7 +126,14 @@ all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
 
 
 ####################     02 SMC Estimations processing    ######################
-SMC_estimations <- list.files("./02_Data/04_SMC_Estimations/",pattern = ".csv$",
+# There are two types of estimations in pysmm, get_ts (estimations in points)
+# and get_map that makes maps over an area. This predictios are then sampled
+# in the Stations and the results of the samples were stored in 
+# "./02_Data/04_SMC_Estimations/get_map/" for more information about 
+# this sample see "./01_Codes/02_Pred_maps_data_extraction.R"
+
+## Estimations with get_ts pysmm
+SMC_ts_estimations <- list.files("./02_Data/04_SMC_Estimations/get_ts/",pattern = ".csv$",
           full.names = T,recursive = T)
 
 # Filtering Stations according with the avaibility of ground truth data0
@@ -133,19 +141,19 @@ Stations<- Stations[Stations$Station_na%in%c(unique(all_GTD$Station)),]
 
 # Filtering SMC Estimations by the stations with ground truth data availability
 Stations_names <- toupper(unique(all_GTD$Station))
-SMC_estimations <- grep(paste(paste0(toupper(unique(all_GTD$station)),collapse ="|"),collapse = ""),
-     SMC_estimations,value = T)
+SMC_ts_estimations <- grep(paste(paste0((unique(all_GTD$Station)),collapse ="|"),collapse = ""),
+                           SMC_ts_estimations,value = T)
 
 for(i in Stations_names){
   output_dir <- "./02_Data/02_Processed_data/SMC_Estimations_fooprtint_merged"
   if(!dir.exists(output_dir)) dir.create(output_dir)
   # Filter files by the Station i
-  files_i <- grep(i,SMC_estimations,value = T)
+  files_i <- grep(i,SMC_ts_estimations,value = T)
   # Change the column name by the footprint
   data_frames <- lapply(files_i, function(path) {
     df <- read.csv(path,sep = ";")
     df$X <- NULL
-    footprint <- sapply(strsplit(path,"/"),"[",5)
+    footprint <- sapply(strsplit(path,"/"),"[",6)
     #paste0(names(df),footprint)
     df[,grep("SM",colnames(df))] <-df[,grep("SM",colnames(df))]/100
     colnames(df)[colnames(df) == "SM"] <- paste0("Pred_", footprint)
@@ -163,20 +171,31 @@ for(i in Stations_names){
 }
 
 # List SMC estimation per station with all the footprints merged
-SMC_estimations <- list.files("./02_Data/02_Processed_data/SMC_Estimations_fooprtint_merged",pattern = ".csv$",
+SMC_ts_estimations <- list.files("./02_Data/02_Processed_data/SMC_Estimations_fooprtint_merged",pattern = ".csv$",
                               full.names = T,recursive = T)
 # Row bind all pred df
-all_estimations <- map_dfr(SMC_estimations, ~ read.csv(.x,sep =",",dec="."))
-all_estimations$Date <- as.POSIXct(all_estimations$Date,tz="GMT")
-all_estimations <- all_estimations[order(all_estimations$Date),]
+all_ts_estimations <- map_dfr(SMC_ts_estimations, ~ read.csv(.x,sep =",",dec="."))
+all_ts_estimations$Date <- as.POSIXct(all_ts_estimations$Date,tz="GMT")
+all_ts_estimations <- all_ts_estimations[order(all_ts_estimations$Date),]
 
 # Adding the Stations sites propierties (name, Land_use,Aspect,...)
 # Attributes to add
 attributes<-c("Station_na","Land_use","Aspect","Latitude","Longitude",
               "Altitude","Altitude_a") 
 
-all_estimations <- merge(all_estimations,data.frame(Stations)[,names(Stations)%in%attributes],
+all_ts_estimations <- merge(all_ts_estimations,data.frame(Stations)[,names(Stations)%in%attributes],
                          by.x="Station",by.y="Station_na")
+## Estimations with get_map pysmm
+all_maps_estimations<- list.files("./02_Data/04_SMC_Estimations/get_map/",
+                                  pattern = ".csv$",full.names = T)
+all_maps_estimations <- map_dfr(all_maps_estimations, ~ read.csv(.x,sep =",",dec="."))
+all_maps_estimations$Date <- as.POSIXct(all_maps_estimations$Date,"%Y%m%d_%H%M%OS",tz="GMT")
+names(all_maps_estimations)[grep("Station",names(all_maps_estimations))] <- "Station"
+all_maps_estimations<- all_maps_estimations %>% 
+  filter(Station_na%in%unique(all_GTD$Station))%>% 
+  select(-c("X","Land_use","Aspect","Latitude","Longitude","Altitude","Altitude_a"))
+
+all_estimations <- full_join(all_maps_estimations,all_ts_estimations,by=c("Station","Date"))
 
 #################    SMC Ground Data and Estimations Merge    ##################
 
@@ -202,7 +221,7 @@ df_joined <- df_joined %>%
   # filter by stations
   filter(Station_pred ==Station_obs)%>%
   # As the join of the SMC pred and obs was maded with +- 3600 seconds of tolerance 
-  # each pred has multiples joins with obs. 
+  # each pred. has multiples joins with obs. 
   # If there are more than one GTD to per each prediction, the mean and sd of the GTD is computed
   # per day in the obs values
   dplyr::group_by(as.Date(Date_obs),Station_pred) %>%
