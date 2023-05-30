@@ -34,6 +34,7 @@ Accuracy_Metrics <- function(dataframe, obs = "obs", pred = "pred", group = NULL
 # Create list to make all possible validation combination
 # Posibles footprints predictions
 pred_list <- as.list(sort(noquote(grep("Pred",names(pred_obs_data),value = T))))
+pred_list <- c("SMC_map_20m",pred_list)
 pred_list <-pred_list[order(as.numeric(gsub("\\D", "", pred_list)))]
 pred_list <- lapply(pred_list, function(x) noquote (x))
 # Observations depth
