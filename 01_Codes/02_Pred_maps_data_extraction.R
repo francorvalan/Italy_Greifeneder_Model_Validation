@@ -6,10 +6,10 @@ library(data.table)
 #install.packages("starsdata", repos = "http://pebesma.staff.ifgi.de", type = "source")
 Stations<- sf::read_sf("./02_Data/03_Vector_data/Station_coordinates.shp")
 
-SMC_maps <- list.files("./02_Data/05_Raster_predictions/",
+Pred_20m_map <- list.files("./02_Data/05_Raster_predictions/",
                        pattern = ".tif$",full.names = T)
 
-raster_stack = read_stars(unlist(SMC_maps),NA_value =0)
+raster_stack = read_stars(unlist(Pred_20m_map),NA_value =0)
 
 # Set names in time format = "%Y%m%d_%H%M%OS"
 names(raster_stack)<- unlist(lapply(strsplit(names(raster_stack),"_"),function(x){
@@ -30,10 +30,10 @@ id_melt<- c("Station_na","Land_use","Aspect","Latitude","Longitude",
 extracted_values_df <- melt(extracted_values_df,id.vars = id_melt)
 #t(extracted_values_df)
 names(extracted_values_df)[names(extracted_values_df)=="variable"] <- "Date"
-names(extracted_values_df)[names(extracted_values_df)=="value"] <- "SMC_map_20m"
+extracted_values_df[extracted_values_df$value==0,"value"] <- NA
+names(extracted_values_df)[names(extracted_values_df)=="value"] <- "Pred_20m_map"
 extracted_values_df$Date <- gsub("X","",extracted_values_df$Date)
-extracted_values_df[extracted_values_df$SMC_map_20m==0,"SMC_map_20m"] <- NA
-extracted_values_df$SMC_map_20m <- extracted_values_df$SMC_map_20m /100
+extracted_values_df$Pred_20m_map <- extracted_values_df$Pred_20m_map /100
 extracted_values_df$geometry <- NULL
 
 output_dir <- "./02_Data/04_SMC_Estimations/get_map"
