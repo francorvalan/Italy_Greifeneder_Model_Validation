@@ -2,9 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+02_Data/01_Original_SMC_data/Second_part
 02_Data/02_Processed_data/Ground_truth_data.csv
+02_Data/03_Vector_data/Countries
 02_Data/05_Raster_predictions
 04_Plots/Dynamic_plots
-02_Data/03_Vector_data/Countries
 B_QGIS_Figures
-02_Data/01_Original_SMC_data/Second_part
