@@ -10,7 +10,7 @@ names(pred_obs_data_pred_melted)[grep("variable",names(pred_obs_data_pred_melted
 Accuracy_Metrics <- function(dataframe, obs = "obs", pred = "pred", group = NULL,Station_name=NULL) {
   # This function computes several validation metrics:
   #     - AVE, RMSE, MSE, MAE, R2, Spearman, Pearson
-  # It allows to group the data in order to compute this mettrics by group.
+  # It allows to group the data in order to compute this mettrics by group. 
   require(caret)
   require(Metrics)
   Depth <- quo_name(enquo(obs))
