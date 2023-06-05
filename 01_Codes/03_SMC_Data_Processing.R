@@ -50,7 +50,6 @@ tm_basemap(c(Esri_WorldImagery ='https://server.arcgisonline.com/ArcGIS/rest/ser
 
 # List and files filter
 SMC_files <- list.files("./02_Data/01_Original_SMC_data/Second_part/",pattern = ".csv$",full.names = T)
-SMC_files <- grep("Wide",SMC_files,invert = T,value = T)
 
 # Set csv configutation to read
 local<- locale(
@@ -125,11 +124,49 @@ all_GTD$wc_02_av <- rowMeans(all_GTD[,c("swc_wc_a_02_avg","swc_wc_b_02_avg","swc
 
 write.csv(all_GTD,"./02_Data/02_Processed_data/Ground_truth_data.csv",row.names = F) 
 
-all_GTD <- read.csv("./02_Data/02_Processed_data/Ground_truth_data.csv")
+all_GTD <- read_delim("./02_Data/02_Processed_data/Ground_truth_data.csv",
+                      locale=local,delim =",")
 
-all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
+#all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
 
-#all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Berlin") # Setting Europe tz
+
+## NEPAS files merging
+
+NEPAS_files<- list.files("./02_Data/01_Original_SMC_data/NEPAS/NEPAS/",
+                         pattern = ".dat$",full.names = T)
+
+#View(read_delim(NEPAS_files[[1]],delim=","))
+SMC_NEPAS<- map_df(NEPAS_files,~ read_delim(.x,skip = 1,delim =",") %>% slice(-c(1,2))) 
+write_csv(SMC_NEPAS,"./02_Data/02_Processed_data/NEPAS_GTD_bind.csv")
+
+local<- locale(
+  date_names = "en",
+  date_format = "%AD",
+  time_format = "%AT",
+  decimal_mark = ".",
+  grouping_mark = ";",
+  tz ="Europe/Rome",
+  encoding = "UTF-8",
+  asciify = FALSE
+)
+
+NEPAS_GTD <- read_delim("./02_Data/02_Processed_data/NEPAS_GTD_bind.csv",
+                        delim = ",",locale = local)
+NEPAS_GTD <- NEPAS_GTD %>% select(c("TIMESTAMP","RECORD","SWC_WC_02_Avg",
+                                    "SWC_WC_02_Std","SWC_WC_05_Avg","SWC_WC_05_Std"))
+summary(NEPAS_GTD) # as the sd are very low, this column can be removed
+
+NEPAS_GTD <- NEPAS_GTD %>% select(-c("SWC_WC_02_Std","SWC_WC_05_Std","RECORD"))
+NEPAS_GTD$Station <- "NEPAS"
+names(NEPAS_GTD)[grep("SWC_WC_02_Avg",names(NEPAS_GTD))] <- "wc_02_av"
+names(NEPAS_GTD)[grep("SWC_WC_05_Avg",names(NEPAS_GTD))] <- "wc_05_av"
+names(NEPAS_GTD)[grep("TIMESTAMP",names(NEPAS_GTD))] <- "Date"
+all_GTD <- bind_rows(all_GTD,NEPAS_GTD)
+
+write_csv(all_GTD,"./02_Data/02_Processed_data/Ground_truth_data.csv") 
+all_GTD <- read_delim("./02_Data/02_Processed_data/Ground_truth_data.csv",
+                      delim=",",locale=local)
+#all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
 
 
 ####################     02 SMC Estimations processing    ######################
@@ -150,9 +187,8 @@ Stations<- Stations[Stations$Station_na%in%c(unique(all_GTD$Station)),]
 Stations_names <- toupper(unique(all_GTD$Station))
 SMC_ts_estimations <- grep(paste(paste0((unique(all_GTD$Station)),collapse ="|"),collapse = ""),
                            SMC_ts_estimations,value = T)
-
+output_dir <- "./02_Data/02_Processed_data/SMC_Estimations_footprint_merged"
 for(i in Stations_names){
-  output_dir <- "./02_Data/02_Processed_data/SMC_Estimations_footprtint_merged"
   if(!dir.exists(output_dir)) dir.create(output_dir)
   # Filter files by the Station i
   files_i <- grep(paste0(i,"_"),SMC_ts_estimations,value = T)
@@ -179,8 +215,9 @@ for(i in Stations_names){
 }
 
 # List SMC estimation per station with all the footprints merged
-SMC_ts_estimations <- list.files("./02_Data/02_Processed_data/SMC_Estimations_footprtint_merged",pattern = ".csv$",
+SMC_ts_estimations <- list.files(output_dir,pattern = ".csv$",
                               full.names = T,recursive = T)
+
 # Row bind all pred df
 all_ts_estimations <- map_dfr(SMC_ts_estimations, ~ read.csv(.x,sep =",",dec="."))
 all_ts_estimations$Date <- as.POSIXct(all_ts_estimations$Date,tz="GMT")
@@ -213,7 +250,8 @@ all_estimations <- merge(all_estimations,data.frame(Stations)[,names(Stations)%i
 tolerance <- 3600 # in seconds
 
 # join two data frames with time tolerance
-get_ts_vs_map<- fuzzy_join(all_ts_estimations[,c("Station","Date","Pred_20")], all_maps_estimations[,c("Station","Date","Pred_20m_map")], 
+get_ts_vs_map<- fuzzy_join(all_ts_estimations[,c("Station","Date","Pred_20")], 
+                           all_maps_estimations[,c("Station","Date","Pred_20m_map")], 
                        by = c("Date"),
                        
                        match_fun = function(x, y) abs(difftime(x,y,units = "secs")) <= tolerance)
