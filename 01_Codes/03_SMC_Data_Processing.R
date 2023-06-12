@@ -29,7 +29,7 @@ library(tmaptools)
 
 Catchment_area <- sf::read_sf("./02_Data/03_Vector_data/LTSER_IT25_Matsch_Mazia_Catchment.shp")
 Stations<- sf::read_sf("./02_Data/03_Vector_data/Station_coordinates.shp")
-
+names(Stations) <- gsub(" ","_",names(Stations))
 tmap_mode("view")
 # https://leaflet-extras.github.io/leaflet-providers/preview/
 tm_basemap(c(Esri_WorldImagery ='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -232,7 +232,8 @@ all_maps_estimations$Date <- as.POSIXct(all_maps_estimations$Date,"%Y%m%d_%H%M%O
 names(all_maps_estimations)[grep("Station",names(all_maps_estimations))] <- "Station"
 all_maps_estimations<- all_maps_estimations %>% 
   filter(Station%in%unique(all_GTD$Station))%>% 
-  select(-c("X","Land_use","Aspect","Latitude","Longitude","Altitude","Altitude_a"))
+  select(-c("X","Land_use","Aspect","Latitude","Longitude","Altitude","Altitude_a")) %>% 
+  filter(complete.cases(Pred_20m_map))
 
 all_estimations <- full_join(all_maps_estimations,all_ts_estimations,by=c("Station","Date"))
 
@@ -266,7 +267,7 @@ get_ts_vs_map<-
 
 
 sum(duplicated(get_ts_vs_map))
-write.csv(get_ts_vs_map,"./02_Data/02_Processed_data/Get_ts_vs_map_20m.csv")
+write_csv(get_ts_vs_map,"./02_Data/02_Processed_data/Get_ts_vs_map_20m.csv")
 #################    SMC Ground Data and Estimations Merge    ##################
 
 
@@ -296,7 +297,7 @@ df_joined <- df_joined %>%
   # each pred. has multiples joins with obs. 
   # If there are more than one GTD to per each prediction, the mean and sd of the GTD is computed
   # per day in the obs values
-  dplyr::group_by(as.Date(Date_obs),Station_pred) %>%
+  dplyr::group_by(as.Date(Date_obs),Station_pred,Date_pred) %>% # Date_pred
   dplyr::mutate(sd_obs_02=sd(wc_02_av,na.rm =T),obs_02 =mean(wc_02_av, na.rm =T),
           sd_obs_05=sd(wc_05_av, na.rm =T),obs_05 =mean(wc_05_av, na.rm =T),
           Date_obs=mean(Date_obs))  %>% 
@@ -306,11 +307,18 @@ df_joined <- df_joined %>%
   # the non-repeated rows are kept.
   select(-c("swc_wc_a_02_avg","swc_wc_a_05_avg",
             "swc_wc_b_02_avg","swc_wc_b_05_avg",
-            "swc_wc_c_02_avg","swc_wc_c_05_avg","wc_05_av","wc_02_av")) %>% 
+            "swc_wc_c_02_avg","swc_wc_c_05_avg","wc_05_av","wc_02_av",
+            "swc_wc_02_avg","swc_wc_05_avg"
+            )) %>% 
   distinct() # remove duplicates (created in the day agrupation)
+
+nrow(df_joined %>% filter(complete.cases(Pred_20m_map,obs_02)))
 
 head(df_joined)
 df_joined$`as.Date(Date_obs)` <- NULL
+# View the duplicated data
+
+
 df_joined[, c("obs_02","obs_05")] <- apply(df_joined[, c("obs_02","obs_05")], 2, function(x) {
   x[x =="NaN"] <- NA
   return(x)
