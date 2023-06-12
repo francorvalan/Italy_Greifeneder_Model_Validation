@@ -2,6 +2,8 @@
 library(readr)
 library(rlang)
 library(dplyr)
+library(reshape2)
+library(rlist)
 pred_obs_data <- read_csv("./02_Data/02_Processed_data/SMC_GTD_Pred.csv")
 (col_melt <- grep("Pred",names(pred_obs_data),invert = T,value = T))
 pred_obs_data_pred_melted <- melt(pred_obs_data,id=col_melt,value.name = "Pred")
@@ -13,12 +15,15 @@ Accuracy_Metrics <- function(dataframe, obs = "obs", pred = "pred", group = NULL
   # It allows to group the data in order to compute this mettrics by group. 
   require(caret)
   require(Metrics)
+  
   Depth <- quo_name(enquo(obs))
   Station <- quo_name(enquo(Station_name))
   Foot <- quo_name(enquo(pred))
   if (!is.null(Station_name)) {
     dataframe <- filter(dataframe,Station_pred == {{Station_name}})
   }
+  
+
   dataframe %>%
     filter(complete.cases(!!ensym(obs), !!ensym(pred))) %>%
     group_by({{group}})%>%
@@ -41,7 +46,11 @@ Accuracy_Metrics <- function(dataframe, obs = "obs", pred = "pred", group = NULL
     ungroup()
 }
 
-######### STATION AND LAND-COVER VALIDATION IN ALL POSIBLE COMBINATIONS VALIDATION 
+#############     Accuracy for all possible combinations           #############
+# ACCURACY METRICS FOR ALL POSSIBLE DEPTHS(2)-FOOTPRINTS(6)-LAND COVER(2) COMBINATIONS (24)
+# output_list[[1]][[2]][[1]] would give you the output of
+# first "obs" value (obs_02), second "pred_value" (Pred_100m) grouping by Stations
+
 # Create list to make all possible validation combination
 # Posibles footprints predictions
 pred_list <- as.list(sort(noquote(grep("Pred",names(pred_obs_data),value = T))))
@@ -54,15 +63,12 @@ obs_list <- list(quote(obs_02), quote(obs_05))
 # Land-use groups
 group_list <- list(quote(Station_obs), quote(Land_use))
 
-Station_list
-# ACCURACY METRICS FOR ALL POSSIBLE DEPTHS(2)-FOOTPRINTS(6)-LAND COVER(2) COMBINATIONS (24)
-# output_list[[1]][[2]][[1]] would give you the output of
-# first "obs" value (obs_02) and the second "pred_value" (Pred_100m) in the 3 "group" (Station_obs).
+Station_list = unlist(unique(pred_obs_data$Station_pred))
+
 output_list <- lapply(obs_list, function(obs_value) {
   lapply(pred_list,function(pred_value){
-    lapply(Station_list, function(Station_name) {
-      Accuracy_Metrics(pred_obs_data, obs = !!obs_value, 
-                       pred = !!pred_value, group =!!group_list)
+    lapply(group_list, function(group_value) {
+      Accuracy_Metrics(pred_obs_data, obs = !!obs_value, pred = !!pred_value, group = !!group_value)
     })
   })
 })
@@ -76,13 +82,12 @@ if(!dir.exists(output_dir)) dir.create(output_dir)
 for(obs in seq_along(obs_list)){
   for (p in seq_along(pred_list)) {
     for (landc in seq_along(group_list)) {
-      filename <- paste0("Accuracy","depth_", obs_list[[obs]],"pred_footprint_",pred_list[[p]], "_per_", group_list[[landc]], ".csv")
+      filename <- paste0("Accuracy_","SMC_at_", as.numeric(gsub("\\D","",obs_list[[obs]])),"_cm,_",pred_list[[p]], "_per_", group_list[[landc]], ".csv")
       filepath <- file.path(output_dir, filename)
       write.csv2(output_list[[obs]][[p]][[landc]], file = filepath, row.names = FALSE)
     }
   }
 }
-
 
 
 ##################           Overall_Accuracy            #######################
@@ -140,7 +145,7 @@ bind_df <- function(x){
 Overall_Accuracy_Land_cover<- lapply(lapply(Overall_Accuracy_Land_cover,unlist,recursive=F), bind_df)
 
 Overall_Accuracy_Land_cover <- lapply(Overall_Accuracy_Land_cover, function(x){
-  x %>% arrange(`(Land_use)`) %>% arrange(Depth) %>% mutate(across(where(is.numeric), round, 3))
+  x %>% arrange(`Land_use`) %>% arrange(Depth) %>% mutate(across(where(is.numeric), round, 3))
 })
 
 # Write data frames to CSV files
@@ -186,7 +191,7 @@ Accuracy_per_Station <- lapply(obs_list, function(obs_value) {
 
 bind_df <- function(x){
   df <- do.call(rbind,x)
-  df$Footprint <- as.numeric(gsub("\\D","",df$`(Pred_type)`))
+  df$Footprint <- as.numeric(gsub("\\D","",df$`Pred_type`))
   df<- df %>% arrange(Depth ,Footprint)
 }
 
