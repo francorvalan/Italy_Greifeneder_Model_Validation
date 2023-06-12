@@ -1,4 +1,8 @@
-###
+### In this Scripts we build this plots :
+## 01 - Data distribution: Half-eye (density + boxplot)
+## 02 - SMC GTD and Predictions over Time
+## 03 - SSCATTERPLOTS
+## 04 -
 library(dplyr)
 library(ggdist)
 library(ggplot2)
@@ -7,7 +11,19 @@ library(tidyquant)
 library(reshape2)
 library(ggpubr)
 
-all_GTD <- read.csv("./02_Data/02_Processed_data/Ground_truth_data.csv")
+local<- locale(
+  date_names = "en",
+  date_format = "%AD",
+  time_format = "%AT",
+  decimal_mark = ".",
+  grouping_mark = ";",
+  tz ="Europe/Rome",
+  encoding = "UTF-8",
+  asciify = FALSE
+)
+
+all_GTD <- read_delim("./02_Data/02_Processed_data/Ground_truth_data.csv",
+                      delim=",",locale = local)
 str(all_GTD)
 all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
 #all_GTD$wc_05_av <- rowMeans(all_GTD[,c("swc_wc_a_05_avg","swc_wc_b_05_avg","swc_wc_c_05_avg")])
@@ -15,11 +31,11 @@ all_GTD$Date <- as.POSIXct(all_GTD$Date,tz="Europe/Rome")
 df_joined <- read_csv("./02_Data/02_Processed_data/SMC_GTD_Pred.csv")
 
 
+
+#############               01 - DATA DISTRIBUTION               ###############
 all_GTD$Station <- as.factor(all_GTD$Station)
-all_GTD %>% group_by(Station) %>% summarise(median=median(wc_02_av,na.rm = T))
-all_GTD %>% group_by(Station) %>% summarise(median=median(wc_05_av,na.rm = T))
-########               DATA DISTRIBUTION
 ## SMC data distribution at 2 cm depth
+all_GTD %>% group_by(Station) %>% summarise(median=median(wc_02_av,na.rm = T))
 all_GTD %>% 
   #filter(wc_02_av<1) %>% 
   ggplot(aes(y=wc_02_av,x=Station,fill=Station))+
@@ -35,6 +51,8 @@ all_GTD %>%
   coord_flip()
 
 ## SMC data distribution at 5 cm depth
+
+all_GTD %>% group_by(Station) %>% summarise(median=median(wc_05_av,na.rm = T))
 all_GTD %>% 
   #filter(wc_02_av<1) %>% 
   ggplot(aes(y=wc_05_av,x=Station,fill=Station))+
@@ -47,8 +65,8 @@ all_GTD %>%
   labs(title="Soil moisture content data at 5 cm",x="SMC m³/m³",y="Stations")+
   scale_fill_tq()+theme_tq()+
   coord_flip()
-####### SMC GTD and Predictions over Time ################
 
+############      02 - SMC GTD and Predictions over Time          ##############
 
 Temporal_plot_function <- function(Gound_thouth = data.frame(),
                                    Estimations = data.frame(),
@@ -91,7 +109,7 @@ Temporal_plot_function <- function(Gound_thouth = data.frame(),
 # Depths in the GTD to plot
 depths <- c("wc_05_av", "wc_02_av")
 # Stations
-stations_names <- c("B1","B2","B3","I1","I3","M1","M2","M3","M4","M5","P1","P2","P3","S2","S3","S4")
+stations_names <- unique(pred_obs_data_melt_footprint$Station_pred)
 # All possible combinations between Stations and depths
 combinations <- expand.grid(depths = depths, stations_names = stations_names)
 
@@ -112,10 +130,9 @@ for (i in 1:nrow(combinations)) {
 }
 
 
+ 
+############                  03 - SSCATTERPLOTS                  ##############
 
-
-
-#############       SCATTERPLOTS     ################
 
 # Overall by stations
 cols_melt_footprint<- names(df_joined)[!names(df_joined)%in%c("Pred_20m_map","Pred_20","Pred_50","Pred_100","Pred_200","Pred_500")]
@@ -124,40 +141,80 @@ pred_obs_data_melt_footprint$Footprint <- as.numeric(gsub("\\D","",pred_obs_data
 pred_obs_data_melt_footprint <- pred_obs_data_melt_footprint %>% arrange(Footprint)
 pred_obs_data_melt_footprint_P3 <- pred_obs_data_melt_footprint %>% filter(Station_pred=="P3")
 
-ggscatter(pred_obs_data_melt_footprint, x = "obs_02", 
-          y = "value", 
-          col='royalblue4',size=0.2,# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.1),
-          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
-          #cor.coef = TRUE, 
-          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
-          facet.by = 'variable')+
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
-           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 2) +
-  labs(y='SMC Predicted', x='SMC Observed 2 cm',size=3)+
-  geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
 
+scatter_plots<- function(dataframe=NULL,obs=NULL,pred=NULL,group=NULL,station=NULL){
+  if(!is.null(station))( dataframe<- dataframe %>% filter(Station_pred==station))
+  x_lab <- paste0("SMC Observed at ",as.numeric(gsub("\\D","",obs))," cm.") 
+  y_lab <- c("SMC Predicted") 
+  Title <- if(!is.null(station))(paste0("Station ",station,", SCM at ",as.numeric(gsub("\\D","",obs))," cm."))else{
+    paste0("Overall Accuracy, SCM at ",as.numeric(gsub("\\D","",obs))," cm.")
+  }
+  dataframe <- dataframe %>% filter(complete.cases(value))
+  print(
+    ggscatter(dataframe, x = obs, 
+            y = pred, 
+            col='royalblue4',size=0.2,# points
+            add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+            add.params = list(color = "black",size=0.6,linetype = "solid"),
+            #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+            #cor.coef = TRUE, 
+            #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+            facet.by = group)+
+    stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
+             label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 2) +
+    labs(y=y_lab, x=x_lab,size=3,title = Title)+
+    geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
+  )
+}
+##-----03.1 SMC at 02 cm vs Footprints
+scatter_plots(dataframe = pred_obs_data_melt_footprint,
+              obs ="obs_02",
+              pred = "value",
+              group = 'variable')
+
+
+
+##-----03.3 SMC by Stations
+scatter_plots(dataframe = pred_obs_data_melt_footprint,
+              obs ="obs_05",
+              pred = "value",
+              group = 'variable')
+
+stations <- unique(pred_obs_data_melt_footprint$Station_pred)
+depths <- c("obs_02","obs_05")
+scatter_plots_combinations <- expand.grid(stations,depths)
+output_plots_dir <- "./04_Plots/Scatter_plots_by_Stations"
+if(!dir.exists(output_plots_dir))(dir.create(output_plots_dir))
+
+for(i in 1:nrow(scatter_plots_combinations)){
+  combination<- paste0(unlist(scatter_plots_combinations[i,]),collapse = "_")
+  jpeg(paste0(output_plots_dir,"/",combination,".jpg"), 
+       width =1600, height = 1000,quality=100,res=250)
+  scatter_plots(dataframe = pred_obs_data_melt_footprint,
+                obs =as.character(scatter_plots_combinations[i,2]),
+                pred = "value",
+                group = 'variable',station = as.character(scatter_plots_combinations[i,1]))
+  dev.off()
+}
+
+
+
+
+##-----03.4 SMC per each Pred gruped by Land-cover
 scatterplot_Landcover_group<- function(dataframe,obs=NULL,pred=NULL){
   Depth <- as.numeric(gsub("\\D","",quo_name(enquo(obs))))
-  #print(Depth)
-  #print(as.character(!!{{pred}}))
-  #print(as.numeric(gsub("\\D","",as.character(!!{{pred}}))))
-  #foot<- as.numeric(gsub("\\D","",quo_name(enquo(pred))))
-  #print(as.numeric(gsub("\\D","",quo_name(enquo(pred)))))
-  #print(as.numeric(gsub("\\D","",pred)))
   foot <- paste0(as.numeric(gsub("\\D","",pred))," cm")
   if (grepl("map", quo_name(enquo(pred)))) {
     foot <- paste0(foot, " map")
   }
-  #print(Depth)
-  dataframe <- dataframe %>% filter(variable==as.character(!!{{pred}}))
+  dataframe <- dataframe %>% filter(variable==as.character(!!{{pred}}),
+                                    complete.cases(Land_use))
 
   print(ggscatter(dataframe, x = quo_name(enquo(obs)), 
             y = "value", 
             col='royalblue4', size=0.2,# points
             add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-            add.params = list(color = "black",size=0.2,linetype = "dashed"),
+            add.params = list(color = "black",size=0.4,linetype = "solid"),
             facet.by = 'Land_use')+
     stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
              label.x = 0.10,label.y = 0.05,size=3,label.sep='\n',digits = 2) +
@@ -165,10 +222,8 @@ scatterplot_Landcover_group<- function(dataframe,obs=NULL,pred=NULL){
     geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
   )
 }
-scatterplot_Landcover_group(pred_obs_data_melt_footprint, obs = !!obs_list[[1]], pred = pred_list[[1]])
+
 pred_list <- unlist(unique(pred_obs_data_melt_footprint$variable))
-#(pred_list <-as.factor(c("Pred_20m_map","Pred_20","Pred_50","Pred_100")))
-# Observations depth
 (obs_list <-as.factor(c("obs_02","obs_05")))
 
 output_plots <- "./04_Plots/Scatter_plots_LC_grouped/"
@@ -188,41 +243,6 @@ lapply(pred_list,function(pred){
   })
 })
 
-# scatterplot_Landcover_group(pred_obs_data_melt_footprint,obs ="obs_05",pred = "Pred_20m_map")
-
-ggscatter(pred_obs_data_melt_footprint, x = "obs_05", 
-          y = "value", 
-          col='royalblue4',size=0.2,# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.1),
-          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
-          #cor.coef = TRUE, 
-          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
-          facet.by = 'variable')+#panel.labs=list("Footprint"=c("20 m map","20 m",50 m","100 m","200 m","500 m"))
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
-           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 2) +
-  labs(y='SMC Predicted', x='SMC Observed 5 cm',size=3)+
-  geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
-
-ggscatter(pred_obs_data_melt_footprint_P3, x = "obs_02", 
-          y = "value", 
-          col='royalblue4',size=0.2,# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.1),
-          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
-          #cor.coef = TRUE, 
-          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
-          facet.by = 'Footprint',panel.labs=list("Footprint"=c("50 m","100 m",
-                                                               "200 m","500 m")))+
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
-           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 3) +
-  labs(y='SMC Predicted', x='SMC Observed 5 cm',size=3)+
-  geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
-
-
-ggplot(data=df_joined, aes(x=obs_02, fill=Station_pred)) +
-  geom_density(alpha=0.5) +
-  theme_minimal()
 
 #################### PYSMM  get_map vs get_ts()
 get_ts_vs_map <- read_csv("./02_Data/02_Processed_data/Get_ts_vs_map_20m.csv")
@@ -247,104 +267,108 @@ ggscatter(df_joined, x = "Pred_20", size = 0.3,
 
 
 
-###############################################
-ggscatter(df_joined, x = "obs_02", size = 0.3,
-          y = "Pred_500m",# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.3))+
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,sep = "~`,`~")),
-           label.x = 0.35,label.y = 0.1,size=3,label.sep='\n')+
-  geom_abline(intercept=0, slope=1,col='red',lty=3)+
-  labs(y='Predicted Values', x='Observed Values',size=2)+ ggtitle("Overall Accuracy")
+# ###############################################
+# ggscatter(df_joined, x = "obs_02", size = 0.3,
+#           y = "Pred_500m",# points
+#           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+#           add.params = list(color = "royalblue4",size=0.3))+
+#   stat_cor(aes(label = paste(..rr.label..,..r.label..,sep = "~`,`~")),
+#            label.x = 0.35,label.y = 0.1,size=3,label.sep='\n')+
+#   geom_abline(intercept=0, slope=1,col='red',lty=3)+
+#   labs(y='Predicted Values', x='Observed Values',size=2)+ ggtitle("Overall Accuracy")
+# 
+# # Scatter Gruping by Land-Cover Class
+# cols_melt_footprint<- names(df_joined)[!names(df_joined)%in%c("Pred_20m_map","Pred_20","Pred_50","Pred_100","Pred_200","Pred_500")]
+# pred_obs_data_melt_footprint <- reshape2::melt(df_joined,id = cols_melt_footprint) 
+# pred_obs_data_melt_footprint$Footprint <- as.numeric(gsub("\\D","",pred_obs_data_melt_footprint$variable))
+# pred_obs_data_melt_footprint <- pred_obs_data_melt_footprint %>% arrange(Footprint)
+# 
+# 
+# ggscatter(pred_obs_data_melt_footprint, x = "obs_05", 
+#           y = "value", 
+#           col='royalblue4',size=0.2,# points
+#           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+#           add.params = list(color = "royalblue4",size=0.1),
+#           #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+#           #cor.coef = TRUE, 
+#           #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+#           facet.by = 'Land_use')+#panel.labs=list("Footprint"=c("20 m map","20 m",50 m","100 m","200 m","500 m"))
+#   stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
+#            label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 2) +
+#   labs(y='SMC Predicted', x='SMC Observed 5 cm',size=3)+
+#   geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
+# 
+# 
+# df <- reshape2::melt(Land_use[,c("value","obs_05","obs_02","Land_use","Station_obs")], id = c("Station_obs"))
+# 
+# ggplot(data=df[df$Station_obs=="P1",], aes(x=value, fill=variable)) +
+#   geom_density(alpha=0.5) +
+#   theme_minimal()
+# 
+# 
+# p <- ggplot(df[df$Station_obs=="P1",], aes(x = value, fill = variable)) + 
+#   geom_histogram(position = "identity", alpha = 0.5, bins = 10)
+# # add facets for each class
+# p <- p + facet_wrap(~ Station_pred)
+# 
+# # customize plot labels and theme
+# p <- p + labs(x = "Predictions", y = "Count", fill = "Observations")
+# p <- p + theme_bw()
+# 
+# # print plot
+# print(p)
+# 
+# 
+# ggscatter(df_joined, x = "obs_02", 
+#           y = "Pred_50m", 
+#           col='royalblue4',size=0.2,# points
+#           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+#           add.params = list(color = "royalblue4",size=0.1),
+#           #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+#           #cor.coef = TRUE, 
+#           #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+#           facet.by = 'Station_pred')+
+#   stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
+#            label.x = 0.15,label.y = 0.1,size=3,label.sep='\n') +
+#   labs(y='SMC Predicted', x='SMC Observed',size=3)+
+#   geom_abline(intercept=0, slope=1,col='red',lty=3)
+# 
+# 
+# ggscatter(df_joined %>% filter(complete.cases(Pred_200m)), x = "obs_05", 
+#           y = "Pred_200m", 
+#           col='royalblue4',size=0.2,# points
+#           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+#           add.params = list(color = "royalblue4",size=0.1),
+#           #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+#           #cor.coef = TRUE, 
+#           #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+#           facet.by = 'Land_use')+
+#   stat_cor(aes(label = paste(..rr.label..,..r.label..,sep = "~`,`~")),
+#            label.x = 0.15,label.y = 0.1,size=3,label.sep='\n')+
+#   labs(y='SMC Predicted', x='SMC Observed',size=3)+
+#   geom_abline(intercept=0, slope=1,col='red',lty=3) 
+# df_joined<- df_joined[df_joined$obs_02<0.5,]
+# 
+# 
+# ggscatter(df_joined, x = "obs_05", 
+#           y = "SM_pred", 
+#           col='royalblue4',size=0.2,# points
+#           add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
+#           add.params = list(color = "royalblue4",size=0.1),
+#           #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
+#           #cor.coef = TRUE, 
+#           #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
+#           facet.by = 'Aspect_pred')+
+#   stat_cor(aes(label = paste(..rr.label..,..r.label..,sep = "~`,`~")),
+#            label.x = 0.15,label.y = 0.1,size=3,label.sep='\n')+
+#   labs(y='SMC Predicted', x='SMC Observed',size=3)+
+#   geom_abline(intercept=0, slope=1,col='red',lty=3)
 
-# Scatter Gruping by Land-Cover Class
-cols_melt_footprint<- names(df_joined)[!names(df_joined)%in%c("Pred_20m_map","Pred_20","Pred_50","Pred_100","Pred_200","Pred_500")]
-pred_obs_data_melt_footprint <- reshape2::melt(df_joined,id = cols_melt_footprint) 
-pred_obs_data_melt_footprint$Footprint <- as.numeric(gsub("\\D","",pred_obs_data_melt_footprint$variable))
-pred_obs_data_melt_footprint <- pred_obs_data_melt_footprint %>% arrange(Footprint)
 
-
-ggscatter(pred_obs_data_melt_footprint, x = "obs_05", 
-          y = "value", 
-          col='royalblue4',size=0.2,# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.1),
-          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
-          #cor.coef = TRUE, 
-          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
-          facet.by = 'Land_use')+#panel.labs=list("Footprint"=c("20 m map","20 m",50 m","100 m","200 m","500 m"))
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
-           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n',digits = 2) +
-  labs(y='SMC Predicted', x='SMC Observed 5 cm',size=3)+
-  geom_abline(intercept=0, slope=1,col='red',lty=2,size=.5)
-
-
-df <- reshape2::melt(Land_use[,c("value","obs_05","obs_02","Land_use","Station_obs")], id = c("Station_obs"))
-
-ggplot(data=df[df$Station_obs=="P1",], aes(x=value, fill=variable)) +
-  geom_density(alpha=0.5) +
-  theme_minimal()
-
-
-p <- ggplot(df[df$Station_obs=="P1",], aes(x = value, fill = variable)) + 
-  geom_histogram(position = "identity", alpha = 0.5, bins = 10)
-# add facets for each class
-p <- p + facet_wrap(~ Station_pred)
-
-# customize plot labels and theme
-p <- p + labs(x = "Predictions", y = "Count", fill = "Observations")
-p <- p + theme_bw()
-
-# print plot
-print(p)
-
-
-ggscatter(df_joined, x = "obs_02", 
-          y = "Pred_50m", 
-          col='royalblue4',size=0.2,# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.1),
-          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
-          #cor.coef = TRUE, 
-          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
-          facet.by = 'Station_pred')+
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,  sep = "~`,`~")),
-           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n') +
-  labs(y='SMC Predicted', x='SMC Observed',size=3)+
-  geom_abline(intercept=0, slope=1,col='red',lty=3)
-
-
-ggscatter(df_joined %>% filter(complete.cases(Pred_200m)), x = "obs_05", 
-          y = "Pred_200m", 
-          col='royalblue4',size=0.2,# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.1),
-          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
-          #cor.coef = TRUE, 
-          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
-          facet.by = 'Land_use')+
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,sep = "~`,`~")),
-           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n')+
-  labs(y='SMC Predicted', x='SMC Observed',size=3)+
-  geom_abline(intercept=0, slope=1,col='red',lty=3) 
-df_joined<- df_joined[df_joined$obs_02<0.5,]
-
-
-ggscatter(df_joined, x = "obs_05", 
-          y = "SM_pred", 
-          col='royalblue4',size=0.2,# points
-          add = "reg.line",panel.labs.background = list(fill = "skyblue3", color = "black"),
-          add.params = list(color = "royalblue4",size=0.1),
-          #panel.labs = list("LC_Class"=c("Herbaceous vegetation","Crops")),
-          #cor.coef = TRUE, 
-          #cor.coeff.args = list(method = "pearson", size=3,label.x = 0.35,label.y = 0.15, label.sep = "\n"),
-          facet.by = 'Aspect_pred')+
-  stat_cor(aes(label = paste(..rr.label..,..r.label..,sep = "~`,`~")),
-           label.x = 0.15,label.y = 0.1,size=3,label.sep='\n')+
-  labs(y='SMC Predicted', x='SMC Observed',size=3)+
-  geom_abline(intercept=0, slope=1,col='red',lty=3)
 
 ########### Monthly Errors #### 
+
+# Funcion to add the number of samples in each boxplot
 stat_box_data <- function(y, upper_limit = 0.3 * 1.15) {
   return( 
     data.frame(
@@ -354,21 +378,51 @@ stat_box_data <- function(y, upper_limit = 0.3 * 1.15) {
   )
 }
 
-pred = "Pred_100" # Pred_20m_map
-obs = "obs_02"
-df_joined %>% mutate(dif = (!!sym(pred)-!!sym(obs)),month=format(df_joined$Date_pred,"%m")) %>% 
+#pred = "Pred_100" # Pred_20m_map
+pred_list <- (unique(pred_obs_data_melt_footprint$variable))
+obs = c("obs_02","obs_05")
+combinations<- expand.grid(pred_list,obs)
+# df_joined %>% mutate(dif = (!!sym(pred)-!!sym(obs)),month=format(df_joined$Date_pred,"%m")) %>% 
+#   ggplot(aes(x=month,y=dif,fill=month))+geom_boxplot()+
+#   ggtitle(paste0("Errors in SMC estimations at 5 cm with ",(pred)))+
+#   ylab(expression(epsilon ~ m^3/m^3))+xlab("Months")+
+#   stat_summary(
+#     fun.data = stat_box_data, 
+#     geom = "text", size =3,
+#     hjust = 0.5,
+#     vjust = 1
+#   )
+
+# Output directories creation
+lapply(list("./04_Plots/Monthly_Errors/SMC_at_2cm","./04_Plots/Monthly_Errors/SMC_at_5cm"),function(x){
+  if(!dir.exists(x))(dir.create(x,recursive = T))
+})
+
+# Monthly box plots in all the combinations
+for(i in 1:nrow(combinations)){
+  if(combinations[i,2]=="obs_02")({
+    outpout_dir <- "./04_Plots/Monthly_Errors/SMC_at_2cm/"
+  }) else(outpout_dir <- "./04_Plots/Monthly_Errors/SMC_at_5cm/")
+  
+  depth <- as.numeric(gsub("\\D","",combinations[i,2]))
+  jpeg(paste0(outpout_dir,"Errors_",paste0(unlist(combinations[i,]),collapse = "_"),".jpg"), 
+       width = 800, height = 500,quality=100,res=150)
+  print(df_joined %>% mutate(dif = (!!sym(noquote(as.character(combinations[i,1]))) - 
+                              !!sym(noquote(as.character(combinations[i,2])))),
+                     month=format(df_joined$Date_pred,"%m")) %>% 
   ggplot(aes(x=month,y=dif,fill=month))+geom_boxplot()+
-  ggtitle(paste0("Errors in SMC estimations at 5 cm with ",(pred)))+
+  ggtitle(paste0("Errors in SMC estimations at ",depth,"cm with ",as.character(combinations[i,1])))+
   ylab(expression(epsilon ~ m^3/m^3))+xlab("Months")+
   stat_summary(
     fun.data = stat_box_data, 
     geom = "text", size =3,
     hjust = 0.5,
     vjust = 1
-  )
+  ))
+  dev.off()
+}
 
 
-df_joined$Pred_20m_map
 ######## MAPS
 # Locations site loading
 Catchment_area <- sf::read_sf("./02_Data/03_Vector_data/LTSER_IT25_Matsch_Mazia_Catchment.shp")
